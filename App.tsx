@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendMessageToGemini, resetSession } from './services/geminiService';
+import { searchCompetitors, formatCompetitorData } from './services/tavilyService';
 import { Message, SEOPhase } from './types';
 import PhaseStepper from './components/PhaseStepper';
 import MarkdownViewer from './components/MarkdownViewer';
 import TypingIndicator from './components/TypingIndicator';
-import { RefreshCw, Zap, Play, PenTool, CheckCircle, FileText, ArrowRight, Copy, Link as LinkIcon, Sparkles, AlertCircle, Code, FileType, Languages, ArrowLeft, Key } from 'lucide-react';
+import { RefreshCw, Zap, Play, PenTool, CheckCircle, FileText, ArrowRight, Copy, Link as LinkIcon, Sparkles, AlertCircle, Code, FileType, Languages, ArrowLeft, Key, Globe } from 'lucide-react';
 
 // --- Configuration Options Constants ---
 const AUDIENCE_OPTIONS = [
@@ -53,6 +54,17 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem("USER_GEMINI_KEY", apiKey);
   }, [apiKey]);
+
+  // 🟢 新增：Tavily Key 状态
+  const [tavilyApiKey, setTavilyApiKey] = useState(() => {
+    return localStorage.getItem("USER_TAVILY_KEY") || "";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("USER_TAVILY_KEY", tavilyApiKey);
+  }, [tavilyApiKey]);
+  
+  const [isResearching, setIsResearching] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -288,6 +300,33 @@ ${configForm.extra || 'None.'}`;
     }
   };
 
+  // --- Functions for Auto-Research ---
+  const handleAutoResearch = async () => {
+    if (!tavilyApiKey) {
+        alert("请先在页面顶部填入 Tavily API Key！");
+        return;
+    }
+    if (!configForm.keyword) {
+        alert("请先在窗口 1 输入核心关键词 (Target Keyword)！");
+        return;
+    }
+
+    setIsResearching(true);
+    try {
+        const data = await searchCompetitors(tavilyApiKey, configForm.keyword);
+        const formattedText = formatCompetitorData(data);
+        setConfigForm(prev => ({
+            ...prev,
+            knowledge: formattedText
+        }));
+    } catch (error: any) {
+        console.error("Auto-Research failed:", error);
+        alert(`Auto-Research failed: ${error.message}`);
+    } finally {
+        setIsResearching(false);
+    }
+  };
+
   // --- UI Components ---
   const renderInputWindow = (
     title: string, 
@@ -295,12 +334,16 @@ ${configForm.extra || 'None.'}`;
     field: keyof typeof configForm, 
     options: string[], 
     isTextArea = false,
-    placeholder = "在此输入..."
+    placeholder = "在此输入...",
+    headerAction?: React.ReactNode
   ) => (
     <div className="bg-white p-6 rounded-xl border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(235,201,238,1)] hover:shadow-[6px_6px_0px_0px_rgba(199,240,201,1)] transition-all duration-300 group">
-      <h3 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
-        <div className="w-3 h-3 bg-[#EBC9EE] border border-slate-900"></div>
-        {title}
+      <h3 className="text-base font-bold text-slate-900 mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-[#EBC9EE] border border-slate-900"></div>
+            {title}
+        </div>
+        {headerAction}
       </h3>
       
       {options.length > 0 && (
@@ -381,7 +424,25 @@ ${configForm.extra || 'None.'}`;
         <div className="md:col-span-2 border-t-2 border-slate-900/10 pt-4 mt-2">
            {renderInputWindow("窗口 7: 品牌底层协议 (Brand Core Protocol)", configForm.brandProtocol, 'brandProtocol', [], true, "在此输入品牌红线或通用原则...")}
         </div>
-        <div className="md:col-span-2">{renderInputWindow("窗口 5: 知识库投喂 (Knowledge Base)", configForm.knowledge, 'knowledge', [], true, "在此粘贴竞品文章内容...")}</div>
+        <div className="md:col-span-2">
+            {renderInputWindow(
+                "窗口 5: 知识库投喂 (Knowledge Base)", 
+                configForm.knowledge, 
+                'knowledge', 
+                [], 
+                true, 
+                "在此粘贴竞品文章内容... (或点击右上方按钮自动抓取)",
+                <button 
+                    onClick={handleAutoResearch}
+                    disabled={isResearching || !configForm.keyword}
+                    className="flex items-center gap-1.5 bg-slate-900 text-white px-3 py-1.5 text-xs font-bold rounded hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)] active:translate-y-[1px] active:shadow-none"
+                    title="自动搜索谷歌前5名文章并提取干货"
+                >
+                    {isResearching ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Globe className="w-3 h-3" />}
+                    Auto-Research (Top 5)
+                </button>
+            )}
+        </div>
         <div className="md:col-span-2">{renderInputWindow("窗口 6: 备注/额外提示 (Extra Prompts)", configForm.extra, 'extra', [], true, "特殊要求？")}</div>
       </div>
       <div className="mt-10 flex justify-center pb-8">
@@ -507,16 +568,30 @@ ${configForm.extra || 'None.'}`;
                 <span className="bg-[#ffeb3b] text-black px-2 py-0.5 rounded-sm transform -rotate-2">API</span>
                 <span>SETTINGS</span>
             </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto bg-slate-800 p-1 rounded border border-slate-700">
-                <Key size={14} className="text-[#ffeb3b] ml-2 shrink-0" />
-                <input 
-                    type="password" 
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="在此粘贴 Google Gemini API Key (以 AIza 开头)..."
-                    className="bg-transparent border-none text-white text-sm focus:ring-0 w-full sm:w-80 placeholder-slate-500 font-mono"
-                />
-                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-xs bg-[#ffeb3b] text-black px-2 py-1.5 font-bold hover:bg-white rounded-sm whitespace-nowrap">GET KEY</a>
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-2 w-full sm:w-auto bg-slate-800 p-1 rounded border border-slate-700">
+                    <Key size={14} className="text-[#a8dadc] ml-2 shrink-0" />
+                    <input 
+                        type="password" 
+                        value={tavilyApiKey}
+                        onChange={(e) => setTavilyApiKey(e.target.value)}
+                        placeholder="Tavily Key (tvly-...)"
+                        className="bg-transparent border-none text-white text-sm focus:ring-0 w-full sm:w-48 placeholder-slate-500 font-mono"
+                    />
+                    <a href="https://app.tavily.com/" target="_blank" rel="noreferrer" className="text-xs bg-[#a8dadc] text-black px-2 py-1.5 font-bold hover:bg-white rounded-sm whitespace-nowrap">TAVILY</a>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto bg-slate-800 p-1 rounded border border-slate-700">
+                    <Key size={14} className="text-[#ffeb3b] ml-2 shrink-0" />
+                    <input 
+                        type="password" 
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="Gemini API Key (AIza...)"
+                        className="bg-transparent border-none text-white text-sm focus:ring-0 w-full sm:w-48 placeholder-slate-500 font-mono"
+                    />
+                    <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-xs bg-[#ffeb3b] text-black px-2 py-1.5 font-bold hover:bg-white rounded-sm whitespace-nowrap">GEMINI</a>
+                </div>
             </div>
         </div>
       </div>
