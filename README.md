@@ -13,7 +13,7 @@ This is not just another wrapper. It's a professional workflow tool designed for
 这不仅仅是一个套壳工具，它是专为 SEO 专家设计的工业级工作流。
 
 * **🧠 Dual AI Core (双核驱动):**
-    * **Google Gemini 1.5 Flash:** Handle 1M+ context window for deep, long-form content generation.
+    * **Google Gemini 2.5 Flash:** Handle 1M+ context window for deep, long-form content generation.
     * **Tavily AI Search:** Auto-research the top 5 competitors on Google and extract key insights.
 * **🔐 BYOK Architecture (自带 Key 模式):**
     * Client-side architecture. Your API Keys are stored locally in your browser (`localStorage`).
@@ -94,4 +94,4 @@ This project is optimized for Vercel.
 Distributed under the MIT License. See `LICENSE` for more information.
 
 ---
-*Built with ❤️ by [Your Name]*
+*Built with ❤️ by [Reese]*
